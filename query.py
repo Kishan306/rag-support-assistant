@@ -72,7 +72,7 @@ def generate(question: str, context_chunks: list[dict]) -> str:
 def rag_query(question: str) -> dict:
     """Full RAG pipeline: retrieve -> augment -> generate."""
 
-    chunks = retrieve(question, n_results=2)
+    chunks = retrieve(question, n_results=3)
 
     if not chunks:
         return {
