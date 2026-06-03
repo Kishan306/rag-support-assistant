@@ -2,6 +2,7 @@ import chromadb
 from chromadb.utils import embedding_functions
 import anthropic
 from dotenv import load_dotenv
+from prompts import ACTIVE_RAG_PROMPT
 
 load_dotenv()
 
@@ -17,12 +18,6 @@ collection = chroma_client.get_collection(
     "novasaas_docs",
     embedding_function=embedding_fn
 )
-
-SYSTEM_PROMPT = """You are a helpful support assistant for NovaSaaS.
-Answer the user's question using ONLY the context provided below.
-If the answer is not in the context, say "I don't have information about that in our docs."
-Never make up information. Be concise and direct.
-Always mention where the user can find the relevant setting if applicable."""
 
 def retrieve(question: str, n_results: int = 2, threshold: float = 0.6) -> list[dict]:
     """Find the most relevant doc chunks for a question."""
@@ -57,7 +52,8 @@ def generate(question: str, context_chunks: list[dict]) -> str:
     message = client.messages.create(
         model="claude-opus-4-6",
         max_tokens=500,
-        system=SYSTEM_PROMPT,
+        temperature=0.3,
+        system=ACTIVE_RAG_PROMPT,
         messages=[
             {
                 "role": "user",
