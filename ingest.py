@@ -8,7 +8,7 @@ load_dotenv()
 chroma_client = chromadb.PersistentClient(path=".chromadb")
 
 embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-    model_name = "BAAI/bge-small-en-v1.5"
+    model_name = "all-MiniLM-L6-v2"
 )
 
 try:
