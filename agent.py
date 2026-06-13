@@ -18,9 +18,21 @@ def calculator(operation: str, a: float, b: float):
     else:
         return f"Error: unknown operation {operation}"
 
+def lookup_account(email: str):
+    account = FAKE_ACCOUNTS.get(email.lower())
+    if account is None:
+        return f"No account found for {email}"
+    return account
 
 TOOL_FUNCTIONS = {
-    "calculator": calculator
+    "calculator": calculator,
+    "lookup_account": lookup_account
+}
+
+FAKE_ACCOUNTS = {
+    "alice@example.com": {"plan": "Pro", "status": "active", "projects": 7},
+    "bob@example.com": {"plan": "Starter", "status": "active", "projects": 2},
+    "charlie@example.com": {"plan": "Enterprise", "status": "suspended", "projects": 4}
 }
 
 tools = [
@@ -39,6 +51,20 @@ tools = [
                 "b": {"type": "number", "description": "Second number"}
             },
             "required": ["operation", "a", "b"]
+        }
+    },
+    {
+        "name": "lookup_account",
+        "description": "Looks up a NovaSaaS user's account details by their email address. Returns their plan, account status, and number of projects. Use this whenever a question is about a specific user's account.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "description": "The user's email address"
+                }
+            },
+            "required": ["email"]
         }
     }
 ]
@@ -90,9 +116,11 @@ def run_agent(user_message: str):
 
 if __name__ == "__main__":
     questions = [
-        "What is 23 multiplied by 47?",
-        "What is 100 divided by 7?",
-        "What is the capital of France?"
+        "What is 88 times 12?",
+        "What plan is kishan@example.com on?",
+        "Is bob@example.com's account active?",
+        "What is the capital of France?",
+        "How many projects does alice@example.com have, and what is that number times 10?",
     ]
 
     for q in questions:
