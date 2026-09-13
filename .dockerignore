@@ -1,0 +1,13 @@
+.git
+.cursor
+rag-venv/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.chromadb/
+.env
+frontend/
+agent.log
+*.md
