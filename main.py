@@ -87,10 +87,7 @@ def chat_stream(req: ChatRequest):
 
         search_query = contextualize_query(req.message, history)
         chunks = retrieve(search_query, n_results=5, threshold=0.7)
-        print(f"[DEBUG] original: {req.message!r}")
-        print(f"[DEBUG] rewritten: {search_query!r}")
-        print(f"[DEBUG] chunks found: {len(chunks)}")
-
+        
         full_text = ""
 
         if not chunks:

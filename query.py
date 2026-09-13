@@ -163,7 +163,6 @@ def generate_stream(question: str, context_chunks: list[dict], history: list[dic
         system=ACTIVE_RAG_PROMPT,
         messages=messages
     ) as stream:
-        print(f"[DEBUG] Full messages sent: {messages}")
         for text in stream.text_stream:
             yield text
 
