@@ -1,184 +1,135 @@
-# NovaSaaS AI Support Assistant
+# NovaSaaS Support Chatbot
 
-A full-stack AI-powered customer support system for a fictional SaaS product,
-built from scratch without high-level frameworks like LangChain. Combines
-Retrieval-Augmented Generation (RAG), an agentic tool-use loop, a streaming
-multi-turn chatbot, and a Next.js frontend — with production-grade error
-handling throughout.
+A full-stack RAG support chatbot for a fictional SaaS product. The backend
+is a FastAPI service that answers questions from product documentation using
+retrieval-augmented generation (RAG) with Claude. The frontend is a Next.js
+chat UI that streams answers token by token.
 
-Built as a hands-on AI Engineering project covering the full stack — from raw
-LLM calls to a multi-tool autonomous agent to a deployable full-stack chatbot.
+Built from scratch without high-level frameworks like LangChain, so every
+stage of the pipeline (chunking, embedding, retrieval, prompting, streaming)
+is explicit and easy to follow.
 
-## What it does
+## Features
 
-Two ways to interact with the system:
-
-**Chatbot (primary interface)** — a conversational support assistant with a
-Next.js chat UI. It:
-- Answers questions grounded in NovaSaaS documentation via RAG
-- Maintains multi-turn conversation memory per session
-- Rewrites follow-up questions into standalone search queries so retrieval
-  still works correctly across a conversation (e.g. "what about annual
-  plans?" after asking about refunds)
-- Streams answers token by token instead of waiting for the full response
-- Detects greetings and small talk (in any phrasing, including slang) and
-  responds naturally instead of forcing them through document retrieval
-- Cites which documentation sections an answer came from
-
-**Agent (tool-use demo)** — a separate, tool-calling agent that intelligently
-chooses between:
-- Searching product documentation (RAG over a vector database)
-- Looking up specific user accounts (database tool)
-- Performing calculations (calculator tool)
-- Answering directly when no tool is needed
-
-The agent can chain multiple tools together — for example, looking up a
-user's project count and then running a calculation on it.
+- Answers questions grounded in NovaSaaS documentation, with source citations
+- Multi-turn conversation memory per session
+- Rewrites follow-up questions into standalone search queries, so retrieval
+  still works when a question depends on earlier turns (e.g. "what about
+  annual plans?" after asking about refunds)
+- Streams answers token by token over Server-Sent Events (SSE)
+- Detects greetings and small talk in any phrasing and responds without
+  running document retrieval
+- Refuses out-of-scope questions instead of guessing
+- Responsive chat UI for desktop and mobile
 
 ## Architecture
 
-**Chatbot flow:**
-
-User message (Next.js frontend)
+Browser (Next.js)
+│ POST /chat/stream (SSE)
+▼
+FastAPI (main.py)
+│
+├── Smalltalk? (Haiku classifier) → reply directly
+│
+└── Real question
+│
+├── Rewrite as standalone query using session history
+├── ChromaDB vector search → top chunks above distance threshold
+│ (no chunks → canned out-of-scope reply, no LLM call)
+└── Claude (Sonnet, streaming) → answer grounded in chunks
 │
 ▼
-POST /chat/stream (FastAPI, SSE)
-│
-├── Smalltalk? → respond directly, skip retrieval
-│
-└── Real question:
-│
-▼
-Rewrite as standalone query using session history
-│
-▼
-ChromaDB vector search → relevant doc chunks (threshold-filtered)
-│
-▼
-Claude (streaming) → answer grounded in chunks + conversation history
-│
-▼
-Tokens streamed to frontend as they generate
-
-
-**Agent flow (separate demo):**
-
-User question
-│
-▼
-Agent (Claude) ── decides which tool(s) to use
-│
-├── search_docs → ChromaDB vector search → relevant doc chunks
-├── lookup_account → account database
-└── calculator → arithmetic
-│
-▼
-Final answer (grounded in tool results)
+tokens streamed to the browser, then sources + session_id
 
 
 ## Tech stack
 
-- **LLM:** Claude (Anthropic) via the official SDK — Sonnet for generation,
-  Haiku for cheap smalltalk classification
-- **Embeddings:** sentence-transformers (all-MiniLM-L6-v2), running locally
-- **Vector DB:** ChromaDB (persistent, local)
-- **Backend:** FastAPI, with Server-Sent Events (SSE) for streaming
+- **Backend:** Python, FastAPI, Server-Sent Events
+- **LLM:** Claude (Anthropic SDK). Sonnet for answers, Haiku for smalltalk classification
+- **Embeddings:** sentence-transformers `all-MiniLM-L6-v2`, running locally
+- **Vector DB:** ChromaDB, persisted to disk
 - **Frontend:** Next.js (App Router), TypeScript, Tailwind CSS
-- **Evaluation:** custom retrieval + LLM-as-judge evaluation suites
-- **Containerization:** Docker + docker-compose (one-command startup for both
-  services)
+- **Containers:** Docker and docker-compose
 
 ## Project structure
 
 | Path | Purpose |
 |------|---------|
-| `docs.py` | Product documentation knowledge base (8 documents: billing, account, technical, getting started, task features, notifications, mobile/offline, support) |
-| `ingest.py` | Chunks documents, embeds them, stores in ChromaDB |
-| `query.py` | RAG pipeline: query rewriting, retrieve, augment, generate (streaming + non-streaming), cost tracking, smalltalk classification |
+| `docs.py` | Product documentation knowledge base (8 documents) |
+| `ingest.py` | Chunks documents, embeds them, and stores them in ChromaDB |
+| `query.py` | Retrieval, query rewriting, generation (streaming and non-streaming), smalltalk classification |
 | `prompts.py` | Versioned system prompts |
-| `main.py` | FastAPI endpoints — `/chat`, `/chat/stream`, `/health` |
-| `session_store.py` | In-memory per-session conversation history |
-| `agent.py` | Minimal agent demonstrating the tool-use loop |
-| `rag_agent.py` | Agent combining RAG, account, and calculator tools |
-| `rag_agent_prod.py` | Production-hardened agent: error handling, iteration limits, logging |
-| `eval_embeddings.py` | Retrieval quality evaluation |
+| `main.py` | API endpoints: `/chat`, `/chat/stream`, `/chat/{session_id}/history`, `/health` |
+| `session_store.py` | In-memory conversation history per session |
+| `eval_embeddings.py` | Retrieval quality evaluation (golden pairs) |
 | `eval_rag.py` | Answer quality evaluation (faithfulness, relevance, conciseness) |
 | `frontend/` | Next.js chat UI (see `frontend/README.md`) |
 | `Dockerfile` | Backend container image |
-| `docker-compose.yml` | Runs backend + frontend together |
+| `docker-compose.yml` | Runs backend and frontend together |
 
 ## Key engineering decisions
 
-**Custom chunking with overlap.** Documents are split into ~500-character
-paragraph-aware chunks with 50-character overlap and a minimum-size filter,
-rather than naive fixed-size splitting, to preserve semantic coherence.
+**Paragraph-aware chunking with overlap.** Documents are split into roughly
+500-character chunks on paragraph boundaries, with 50 characters of overlap
+and a minimum-size filter, so that facts crossing a boundary are not lost and
+tiny header-only chunks are not stored.
 
-**Distance-threshold filtering.** Retrieved chunks below a similarity
-threshold are discarded before reaching the LLM — preventing hallucination
-from irrelevant context and avoiding unnecessary API calls for out-of-scope
-questions.
+**Distance-threshold filtering.** Chunks farther than a cosine-distance
+threshold are discarded before generation. This keeps irrelevant context away
+from the model and avoids LLM calls for out-of-scope questions.
 
-**Conversational query rewriting.** A follow-up question like "what about
-annual plans?" is semantically meaningless to a vector search on its own.
-Before retrieval, the current question is rewritten into a standalone query
-using recent conversation history, so search finds the right chunks even
-when the user's phrasing depends on earlier context. Generation still uses
-the user's original wording, so responses stay natural.
+**Query rewriting for follow-ups.** Generation naturally uses conversation
+history, but vector search does not. Before retrieval, a follow-up question is
+rewritten into a standalone query using recent turns. Generation still uses
+the user's original wording, so replies stay natural.
 
-**Smalltalk short-circuiting.** Greetings and casual chat are classified by
-a cheap Haiku call before retrieval runs, rather than matched against a fixed
-keyword list — this correctly handles arbitrary phrasing (including slang)
-without ever needing to guess and maintain a word list.
+**Smalltalk classification instead of keyword lists.** A cheap Haiku call
+decides whether a message is small talk or a real question. This handles any
+phrasing, including slang, without maintaining a word list.
 
-**Evaluation-driven development.** Both retrieval and answer quality are
-measured with dedicated eval suites. Embedding model choice was validated
-empirically: a higher-benchmark model (bge-small-en-v1.5) was tested and
-rejected after it underperformed all-MiniLM-L6-v2 on this specific dataset —
-a reminder that public benchmarks don't always predict performance on your
-own data.
+**Embedding model chosen by measurement.** `bge-small-en-v1.5` has a higher
+public benchmark score, but it underperformed `all-MiniLM-L6-v2` on this
+project's data in `eval_embeddings.py`, so MiniLM was kept.
 
-**Model tiering for cost.** Uses Claude Sonnet for RAG generation (roughly
-6x cheaper than Opus with no measurable quality loss here) and Haiku for the
-trivial smalltalk classification step — matching model cost to task
-complexity throughout.
-
-**Production-hardened agent loop.** The agent enforces a maximum iteration
-limit (preventing infinite loops), wraps every tool call in error handling
-(one tool failing degrades gracefully instead of crashing the request), and
-logs every step to file for observability.
+**Model tiering.** Sonnet generates answers, and Haiku handles the simple
+classification step.
 
 ## Setup
 
-1. Clone the repo
-```bash
-   git clone git@github.com:Kishan306/rag-support-assistant.git
-   cd rag-support-assistant
-```
+### Prerequisites
 
-2. Create a `.env` file with your API key
+- Docker and docker-compose (recommended), or Python 3.12 and Node.js 20+
+- An Anthropic API key
+
+### Environment
+
+Create a `.env` file in the repo root:
 
 ANTHROPIC_API_KEY=your-key-here
 
 
-### Option A — Run everything with Docker (recommended)
+### Option A: Docker (recommended)
 
 ```bash
 docker-compose up --build
 ```
-- Frontend: http://localhost:3000
-- Backend docs: http://localhost:8000/docs
 
-### Option B — Run manually (backend)
+- Frontend: http://localhost:3000
+- Backend API docs: http://localhost:8000/docs
+
+### Option B: Run manually
+
+Backend:
 
 ```bash
 python3 -m venv rag-venv
 source rag-venv/bin/activate
 pip install -r requirements.txt
-python ingest.py          # build the vector database, run once
+python ingest.py            # builds the vector database, run once or after changing docs
 uvicorn main:app --reload
 ```
 
-### Option B — Run manually (frontend)
+Frontend (in a separate terminal):
 
 ```bash
 cd frontend
@@ -186,47 +137,54 @@ npm install
 cp .env.local.example .env.local
 npm run dev
 ```
-See `frontend/README.md` for more detail on the frontend specifically.
 
-## Usage
+The frontend expects the backend at `http://localhost:8000` (set in
+`.env.local`). CORS is configured to allow `http://localhost:3000`.
 
-**Chat via the UI:** open http://localhost:3000 and start typing.
+## API
 
-**Chat via the API directly:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/chat` | Single response with `answer`, `sources`, and `session_id` |
+| `POST` | `/chat/stream` | Same request, streamed as SSE `token` events followed by a `done` event |
+| `GET` | `/chat/{session_id}/history` | Conversation history for a session |
+| `GET` | `/health` | Service status and number of indexed chunks |
+
+Example request:
+
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "How do I reset my password?"}'
 ```
 
-**Run the tool-use agent (separate from the chatbot):**
+## Evaluation
+
 ```bash
-python rag_agent_prod.py
+python eval_embeddings.py   # retrieval quality: top-1, top-3, document accuracy
+python eval_rag.py          # answer quality: faithfulness, relevance, conciseness
 ```
 
-**Run evaluations:**
-```bash
-python eval_embeddings.py   # retrieval quality
-python eval_rag.py          # answer quality
-```
+The golden pairs in `eval_embeddings.py` reference chunk IDs, so they need
+updating whenever the documents change.
+
+## Limitations
+
+- Sessions are stored in memory, so they are lost on restart and do not work
+  across multiple backend workers.
+- No authentication or rate limiting.
+- Retrieval is vector-only, with no re-ranking or keyword matching.
+- Conversation history is capped at the last 10 messages.
+- Answers are capped at 200 tokens, so very broad questions may be truncated.
 
 ## What I learned building this
 
-- How LLMs work at the token and embedding level, and how RAG grounds them in
-  external knowledge
-- Vector search mechanics: cosine similarity, distance thresholds, and why
-  embedding models are not interchangeable
-- Prompt engineering patterns for reliable, structured LLM output
-- Evaluating AI systems rigorously rather than eyeballing a few examples
-- Building agents from scratch: tool definitions, the agentic loop, and
-  multi-tool orchestration
-- That retrieval and generation have different context needs — generation
-  benefits from full conversation history for free, but retrieval needs an
-  explicit query-rewriting step to use that same history effectively
-- Turning a backend-only RAG pipeline into a real chatbot: sessions,
-  streaming, and graceful handling of small talk
-- Production concerns: cost management, error handling, iteration limits,
-  and observability
+- How RAG grounds an LLM in external documents, and where it fails
+- Why retrieval needs its own handling for follow-up questions, separate from generation
+- Chunking, distance thresholds, and why embedding models are not interchangeable
+- Streaming LLM output to a browser with Server-Sent Events
+- Measuring retrieval and answer quality instead of judging by a few examples
+- Keeping costs down by matching model size to task complexity
 
 ---
 
