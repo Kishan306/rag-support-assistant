@@ -24,22 +24,24 @@ is explicit and easy to follow.
 
 ## Architecture
 
+```
 Browser (Next.js)
-│ POST /chat/stream (SSE)
-▼
+     │  POST /chat/stream  (SSE)
+     ▼
 FastAPI (main.py)
-│
-├── Smalltalk? (Haiku classifier) → reply directly
-│
-└── Real question
-│
-├── Rewrite as standalone query using session history
-├── ChromaDB vector search → top chunks above distance threshold
-│ (no chunks → canned out-of-scope reply, no LLM call)
-└── Claude (Sonnet, streaming) → answer grounded in chunks
-│
-▼
-tokens streamed to the browser, then sources + session_id
+     │
+     ├── Smalltalk? (Haiku classifier) ──► reply directly
+     │
+     └── Real question
+            │
+            ├── 1. Rewrite as standalone query using session history
+            ├── 2. ChromaDB vector search ──► top chunks above distance threshold
+            │        (no chunks ──► canned out-of-scope reply, no LLM call)
+            └── 3. Claude (Sonnet, streaming) ──► answer grounded in chunks
+                     │
+                     ▼
+            tokens streamed to browser, then sources + session_id
+```
 
 
 ## Tech stack
